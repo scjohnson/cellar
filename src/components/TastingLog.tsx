@@ -34,12 +34,7 @@ export default function TastingLog() {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-cream max-w-5xl mx-auto w-full">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-cream/95 backdrop-blur-md border-b border-warm-border px-4 py-4 flex items-center justify-between">
-        <h2 className="text-burgundy font-serif font-black text-xl md:text-2xl tracking-tight">Tasting Log</h2>
-        <span className="text-xs text-warm-muted font-bold font-sans">{tastings.length} tastings logged</span>
-      </div>
+    <div className="flex-1 flex flex-col bg-cream max-w-5xl mx-auto w-full pt-4">
 
       {/* Main List */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">

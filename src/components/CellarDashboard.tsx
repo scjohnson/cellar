@@ -164,16 +164,7 @@ export default function CellarDashboard() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto bg-cream pb-8 px-4 md:px-8 max-w-5xl mx-auto w-full">
-      {/* Welcome Banner */}
-      <div className="py-6 md:py-8 border-b border-warm-border mb-6">
-        <h2 className="text-burgundy font-serif font-black text-2xl md:text-3xl tracking-tight">
-          Cellar Dashboard
-        </h2>
-        <p className="text-warm-muted text-xs md:text-sm mt-1">
-          A high-level view of your current collection, tasting activity, and Elo rankings.
-        </p>
-      </div>
+    <div className="flex-1 overflow-y-auto bg-cream pb-8 px-4 md:px-8 max-w-5xl mx-auto w-full pt-6">
 
       <div className="space-y-6">
         {/* KPI Grid */}

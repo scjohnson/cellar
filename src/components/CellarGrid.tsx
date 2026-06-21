@@ -174,7 +174,9 @@ export default function CellarGrid() {
     const locationMap: Record<string, Record<string, number>> = {}
     
     inCellar.forEach(w => {
-      const loc = w.cellar_location || 'Unassigned'
+      const fullLoc = w.cellar_location || 'Unassigned'
+      // Group by the main location prefix (e.g. "Wine Fridge, Row 6" -> "Wine Fridge")
+      const loc = fullLoc.split(',')[0].trim()
       const style = w.style || 'Other'
       if (!locationMap[loc]) locationMap[loc] = {}
       if (!locationMap[loc][style]) locationMap[loc][style] = 0
