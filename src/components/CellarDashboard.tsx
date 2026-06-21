@@ -8,6 +8,29 @@ import { ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, 
 
 const ELO_BASELINE = 1500
 
+interface CustomTooltipProps {
+  active?: boolean
+  payload?: any[]
+}
+
+const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload
+    return (
+      <div className="bg-white border border-warm-border rounded-lg p-3 shadow-md text-xs font-sans">
+        <p className="font-bold text-burgundy font-serif mb-1">{data.year}</p>
+        <p className="text-charcoal font-semibold">
+          Bottles Ready: <span className="font-bold text-burgundy">{data.Bottles}</span>
+        </p>
+        <p className="text-warm-muted text-[10px] mt-0.5">
+          Unique Cuvées: {data.Cuvées}
+        </p>
+      </div>
+    )
+  }
+  return null
+}
+
 export default function CellarDashboard() {
   const [rankingPerson, setRankingPerson] = useState<'stephen' | 'jennifer'>('stephen')
 
@@ -64,7 +87,33 @@ export default function CellarDashboard() {
       .sort((a, b) => b.bottles - a.bottles)
       .slice(0, 5) // Top 5 regions
 
-    return { totalBottles, uniqueWines, totalValue, pctPriced, styleData, regionData }
+    // Longevity Timeline (10 years)
+    const currentYear = new Date().getFullYear()
+    const timelineYears = Array.from({ length: 10 }, (_, i) => currentYear + i)
+    const timelineData = timelineYears.map(year => {
+      let bottles = 0
+      let cuvees = 0
+
+      inCellar.forEach(w => {
+        const from = w.drink_from
+        const until = w.drink_until
+        if (from || until) {
+          const isReady = (!from || year >= from) && (!until || year <= until)
+          if (isReady) {
+            bottles += w.quantity
+            cuvees += 1
+          }
+        }
+      })
+
+      return {
+        year: String(year),
+        Bottles: bottles,
+        Cuvées: cuvees
+      }
+    })
+
+    return { totalBottles, uniqueWines, totalValue, pctPriced, styleData, regionData, timelineData }
   }, [wines])
 
   // Get Top 3 Elo ranked wines (who have actually participated in comparisons)
@@ -163,6 +212,44 @@ export default function CellarDashboard() {
               </span>
             </div>
           </div>
+        </div>
+
+        {/* Cellar Longevity Timeline */}
+        <div className="bg-white border border-warm-border rounded-xl p-5 shadow-sm flex flex-col">
+          <h3 className="text-sm font-serif font-bold text-burgundy border-b border-warm-border pb-3 mb-4 flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-gold" />
+            <span>Cellar Longevity Timeline</span>
+          </h3>
+          <div className="h-56 w-full mt-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={dashboardStats.timelineData}
+                margin={{ top: 10, right: 10, left: -25, bottom: 5 }}
+              >
+                <XAxis 
+                  dataKey="year" 
+                  axisLine={false} 
+                  tickLine={false}
+                  style={{ fontSize: '11px', fontFamily: 'var(--font-sans)', fill: 'var(--color-warm-muted)' }}
+                />
+                <YAxis 
+                  axisLine={false}
+                  tickLine={false}
+                  style={{ fontSize: '11px', fontFamily: 'var(--font-sans)', fill: 'var(--color-warm-muted)' }}
+                />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(74, 14, 23, 0.03)' }} />
+                <Bar 
+                  dataKey="Bottles" 
+                  fill="#4A0E17" 
+                  radius={[4, 4, 0, 0]}
+                  barSize={20}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="text-[9px] text-warm-muted mt-2 font-sans text-center">
+            * Shows how many bottles in stock are within their optimal drink window for each calendar year.
+          </p>
         </div>
 
         {/* Charts Section */}
