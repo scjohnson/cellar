@@ -211,7 +211,7 @@ function MainLayout() {
 
   // Logged-in application layout
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-cream relative font-sans text-charcoal">
+    <div className="flex-1 flex flex-col h-[100dvh] overflow-hidden bg-cream relative font-sans text-charcoal">
       {/* Desktop Top Header Bar (md+) */}
       <header className="hidden md:flex items-center justify-between px-8 py-4 bg-white border-b border-warm-border shadow-sm z-30 shrink-0">
         <div className="flex flex-col">
@@ -269,7 +269,7 @@ function MainLayout() {
       </div>
 
       {/* Mobile Navigation Bar - Bottom Sticky (under md) */}
-      <nav className="md:hidden absolute bottom-0 left-0 right-0 h-16 bg-white/95 backdrop-blur-md border-t border-warm-border flex items-center justify-around px-4 z-20 shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white/95 backdrop-blur-md border-t border-warm-border flex items-center justify-around px-4 z-50 shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
         <NavigationItems isMobile={true} />
       </nav>
     </div>
