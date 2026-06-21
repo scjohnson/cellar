@@ -6,7 +6,8 @@ import CellarGrid from './components/CellarGrid'
 import WineDetail from './components/WineDetail'
 import TastingLog from './components/TastingLog'
 import CellarDashboard from './components/CellarDashboard'
-import { Wine as WineIcon, Activity, Star, LogOut, Lock, Mail, Loader2 } from 'lucide-react'
+import Longevity from './components/Longevity'
+import { Wine as WineIcon, Activity, Star, LogOut, Lock, Mail, Loader2, Calendar } from 'lucide-react'
 
 // Initialize TanStack Query Client
 const queryClient = new QueryClient({
@@ -32,11 +33,15 @@ function NavigationItems({ isMobile = false, onNavigate = () => {} }: { isMobile
       <>
         <NavLink to="/" onClick={onNavigate} className={({ isActive }) => isActive ? activeClass : inactiveClass}>
           <Activity className="h-5 w-5" />
-          <span className="text-[10px] tracking-wider uppercase font-sans">Stats</span>
+          <span className="text-[10px] tracking-wider uppercase font-sans">Overview</span>
         </NavLink>
         <NavLink to="/cellar" onClick={onNavigate} className={({ isActive }) => isActive ? activeClass : inactiveClass}>
           <WineIcon className="h-5 w-5" />
           <span className="text-[10px] tracking-wider uppercase font-sans">Cellar</span>
+        </NavLink>
+        <NavLink to="/longevity" onClick={onNavigate} className={({ isActive }) => isActive ? activeClass : inactiveClass}>
+          <Calendar className="h-5 w-5" />
+          <span className="text-[10px] tracking-wider uppercase font-sans">Longevity</span>
         </NavLink>
         <NavLink to="/tastings" onClick={onNavigate} className={({ isActive }) => isActive ? activeClass : inactiveClass}>
           <Star className="h-5 w-5" />
@@ -53,6 +58,9 @@ function NavigationItems({ isMobile = false, onNavigate = () => {} }: { isMobile
       </NavLink>
       <NavLink to="/cellar" className={({ isActive }) => isActive ? activeClass : inactiveClass}>
         My Cellar
+      </NavLink>
+      <NavLink to="/longevity" className={({ isActive }) => isActive ? activeClass : inactiveClass}>
+        Longevity
       </NavLink>
       <NavLink to="/tastings" className={({ isActive }) => isActive ? activeClass : inactiveClass}>
         Tasting Log
@@ -254,6 +262,7 @@ function MainLayout() {
         <Routes>
           <Route path="/" element={<CellarDashboard />} />
           <Route path="/cellar" element={<CellarGrid />} />
+          <Route path="/longevity" element={<Longevity />} />
           <Route path="/tastings" element={<TastingLog />} />
           <Route path="/wine/:id" element={<WineDetail />} />
         </Routes>
