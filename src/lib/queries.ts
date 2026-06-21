@@ -202,3 +202,21 @@ export async function getRecentComparisons(limit = 30): Promise<Comparison[]> {
 
   return (data || []) as Comparison[]
 }
+
+/**
+ * Insert a new tasting note.
+ */
+export async function insertTasting(tasting: Partial<Tasting>): Promise<Tasting> {
+  const { data, error } = await supabase
+    .from('tastings')
+    .insert([tasting])
+    .select()
+    .single()
+
+  if (error) {
+    console.error('Error inserting tasting:', error)
+    throw error
+  }
+
+  return data as Tasting
+}

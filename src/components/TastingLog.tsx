@@ -1,10 +1,13 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { getRecentTastings } from '../lib/queries'
 import type { Tasting } from '../lib/queries'
-import { Calendar, MapPin, Wine as WineIcon, Star, Quote, Info, ChevronRight } from 'lucide-react'
+import { Calendar, MapPin, Wine as WineIcon, Star, Quote, Info, ChevronRight, Plus } from 'lucide-react'
+import AddTastingModal from './AddTastingModal'
 
 export default function TastingLog() {
+  const [isModalOpen, setIsModalOpen] = useState(false)
   const { data: tastings = [], isLoading, error } = useQuery<Tasting[]>({
     queryKey: ['recent-tastings'],
     queryFn: () => getRecentTastings(50),
@@ -34,7 +37,16 @@ export default function TastingLog() {
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-cream max-w-5xl mx-auto w-full pt-4">
+    <div className="flex-1 flex flex-col bg-cream max-w-5xl mx-auto w-full pt-4 relative">
+      <div className="px-4 flex justify-end pb-2 shrink-0">
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-burgundy text-white rounded text-xs font-bold font-sans hover:bg-burgundy-hover transition-colors shadow-sm"
+        >
+          <Plus className="h-4 w-4" />
+          Log Tasting
+        </button>
+      </div>
 
       {/* Main List */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
@@ -148,6 +160,11 @@ export default function TastingLog() {
           ))
         )}
       </div>
+
+      <AddTastingModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+      />
     </div>
   )
 }

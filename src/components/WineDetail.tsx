@@ -1,10 +1,13 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getWineById, getTastingsForWine, getComparisonsForWine } from '../lib/queries'
 import type { Wine, Tasting, Comparison } from '../lib/queries'
-import { ChevronLeft, MapPin, Calendar, DollarSign, Bookmark, ShoppingBag, Percent, BookOpen, Star, AlertCircle, Sparkles, GitCompare } from 'lucide-react'
+import { ChevronLeft, MapPin, Calendar, DollarSign, Bookmark, ShoppingBag, Percent, BookOpen, Star, AlertCircle, Sparkles, GitCompare, Plus } from 'lucide-react'
+import AddTastingModal from './AddTastingModal'
 
 export default function WineDetail() {
+  const [isModalOpen, setIsModalOpen] = useState(false)
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const wineId = id || ''
@@ -119,14 +122,23 @@ export default function WineDetail() {
   return (
     <div className="flex-1 flex flex-col bg-cream overflow-y-auto pb-8 max-w-3xl mx-auto w-full">
       {/* Header Bar */}
-      <div className="sticky top-0 z-10 bg-cream/95 backdrop-blur-md border-b border-warm-border px-4 py-3.5 flex items-center gap-3">
+      <div className="sticky top-0 z-10 bg-cream/95 backdrop-blur-md border-b border-warm-border px-4 py-3.5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onBack}
+            className="p-1.5 rounded-lg bg-white hover:bg-cream border border-warm-border text-charcoal hover:border-gold transition-colors cursor-pointer"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <span className="text-warm-muted text-xs font-bold uppercase tracking-wider font-sans hidden sm:inline">Wine Details</span>
+        </div>
         <button
-          onClick={onBack}
-          className="p-1.5 rounded-lg bg-white hover:bg-cream border border-warm-border text-charcoal hover:border-gold transition-colors cursor-pointer"
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-burgundy text-white rounded text-xs font-bold font-sans hover:bg-burgundy-hover transition-colors shadow-sm"
         >
-          <ChevronLeft className="h-5 w-5" />
+          <Plus className="h-4 w-4" />
+          Log Tasting
         </button>
-        <span className="text-warm-muted text-xs font-bold uppercase tracking-wider font-sans">Wine Details</span>
       </div>
 
       {/* Hero Section */}
@@ -476,6 +488,12 @@ export default function WineDetail() {
           </div>
         )}
       </div>
+
+      <AddTastingModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        preselectedWineId={wine.id}
+      />
     </div>
   )
 }
