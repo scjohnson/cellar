@@ -33,6 +33,7 @@ const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
 
 export default function CellarDashboard() {
   const [rankingPerson, setRankingPerson] = useState<'stephen' | 'jennifer'>('stephen')
+  const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()))
 
   // Fetch wines (in cellar + out)
   const { data: wines = [], isLoading: loadingWines } = useQuery<Wine[]>({
@@ -123,6 +124,18 @@ export default function CellarDashboard() {
       .filter(w => w[eloCol] !== ELO_BASELINE)
       .slice(0, 3)
   }, [rankings, rankingPerson])
+
+  // Get wines ready to drink in the selected year
+  const winesForSelectedYear = useMemo(() => {
+    const yearNum = Number(selectedYear)
+    return wines.filter(w => {
+      if (w.quantity <= 0) return false
+      const from = w.drink_from
+      const until = w.drink_until
+      if (!from && !until) return false
+      return (!from || yearNum >= from) && (!until || yearNum <= until)
+    })
+  }, [wines, selectedYear])
 
   const isLoading = loadingWines || loadingRankings || loadingTastings
 
@@ -240,16 +253,91 @@ export default function CellarDashboard() {
                 <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(74, 14, 23, 0.03)' }} />
                 <Bar 
                   dataKey="Bottles" 
-                  fill="#4A0E17" 
                   radius={[4, 4, 0, 0]}
                   barSize={20}
-                />
+                >
+                  {dashboardStats.timelineData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.year === selectedYear ? '#C5A059' : '#4A0E17'}
+                      className="cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={() => setSelectedYear(entry.year)}
+                    />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
           <p className="text-[9px] text-warm-muted mt-2 font-sans text-center">
-            * Shows how many bottles in stock are within their optimal drink window for each calendar year.
+            * Shows how many bottles in stock are within their optimal drink window for each calendar year. Click a bar to view list.
           </p>
+        </div>
+
+        {/* Wines to Drink List */}
+        <div className="bg-white border border-warm-border rounded-xl p-5 shadow-sm">
+          <div className="border-b border-warm-border pb-3 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="text-base font-serif font-bold text-burgundy flex items-center gap-2">
+                <WineIcon className="h-4.5 w-4.5" />
+                <span>Wines to Drink in {selectedYear}</span>
+              </h3>
+              <p className="text-[11px] text-warm-muted mt-0.5 font-sans">
+                {winesForSelectedYear.reduce((acc, w) => acc + w.quantity, 0)} bottles ready for optimal consumption
+              </p>
+            </div>
+            {selectedYear === String(new Date().getFullYear()) && (
+              <span className="self-start sm:self-auto bg-gold-light text-gold-dark border border-gold/15 text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full shrink-0">
+                Drink Soon
+              </span>
+            )}
+          </div>
+
+          {winesForSelectedYear.length === 0 ? (
+            <div className="py-6 text-center text-xs italic text-warm-muted font-serif">
+              No dated wines in cellar have their optimal drinking window in {selectedYear}.
+            </div>
+          ) : (
+            <div className="divide-y divide-warm-border/50 max-h-96 overflow-y-auto pr-1">
+              {winesForSelectedYear.map((wine) => {
+                const endsSoon = wine.drink_until && (wine.drink_until <= Number(selectedYear) + 1)
+                
+                return (
+                  <Link
+                    key={wine.id}
+                    to={`/wine/${wine.id}`}
+                    className="flex items-center justify-between py-3 hover:bg-cream/40 transition-colors group first:pt-0 last:pb-0"
+                  >
+                    <div className="min-w-0 pr-2">
+                      <p className="text-charcoal font-serif font-bold text-sm leading-tight group-hover:text-burgundy transition-colors truncate">
+                        {wine.producer}
+                      </p>
+                      <p className="text-warm-muted text-[10px] mt-1 truncate font-sans">
+                        {wine.vintage || 'NV'} · {wine.name || 'Cuvée'}
+                        {wine.cellar_location && ` · Loc: ${wine.cellar_location}`}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0 text-right">
+                      {endsSoon && (
+                        <span className="bg-red-50 text-red-700 border border-red-100 text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0">
+                          {wine.drink_until === Number(selectedYear) ? 'Ends this year' : 'Ends next year'}
+                        </span>
+                      )}
+
+                      <div className="text-right">
+                        <span className="font-serif text-xs font-bold text-charcoal block">
+                          {wine.quantity} {wine.quantity === 1 ? 'bottle' : 'bottles'}
+                        </span>
+                        <span className="text-[9px] text-warm-muted font-mono block mt-0.5 font-sans">
+                          Window: {wine.drink_from || 'NV'}–{wine.drink_until || 'Present'}
+                        </span>
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* Charts Section */}
