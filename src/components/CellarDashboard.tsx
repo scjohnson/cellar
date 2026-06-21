@@ -1,304 +1,432 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getWines, getWineRankings, getRecentComparisons } from '../lib/queries'
-import type { Wine, Comparison } from '../lib/queries'
-import { Wine as WineIcon, Activity, Trophy, GitCompare, Layers, HelpCircle } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { getWines, getWineRankings, getRecentTastings } from '../lib/queries'
+import type { Wine, Tasting } from '../lib/queries'
+import { Wine as WineIcon, Trophy, Layers, DollarSign, Calendar, TrendingUp, ChevronRight } from 'lucide-react'
+import { ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts'
 
 const ELO_BASELINE = 1500
 
-interface CellarDashboardProps {
-  onSelectWine: (id: string) => void
-}
-
-export default function CellarDashboard({ onSelectWine }: CellarDashboardProps) {
+export default function CellarDashboard() {
   const [rankingPerson, setRankingPerson] = useState<'stephen' | 'jennifer'>('stephen')
 
+  // Fetch wines (in cellar + out)
   const { data: wines = [], isLoading: loadingWines } = useQuery<Wine[]>({
     queryKey: ['wines-dashboard'],
     queryFn: () => getWines(false),
   })
 
+  // Fetch rankings for Elo
   const { data: rankings = [], isLoading: loadingRankings } = useQuery<Wine[]>({
     queryKey: ['rankings', rankingPerson],
     queryFn: () => getWineRankings(rankingPerson),
   })
 
-  const { data: comparisons = [], isLoading: loadingComparisons } = useQuery<Comparison[]>({
-    queryKey: ['recent-comparisons'],
-    queryFn: () => getRecentComparisons(30),
+  // Fetch recent tastings for activity
+  const { data: tastings = [], isLoading: loadingTastings } = useQuery<Tasting[]>({
+    queryKey: ['recent-tastings-dashboard'],
+    queryFn: () => getRecentTastings(4),
   })
 
-  // Cellar stats (inventory only)
-  const stats = useMemo(() => {
+  // Process data for KPIs and Charts
+  const dashboardStats = useMemo(() => {
     const inCellar = wines.filter(w => w.quantity > 0)
     const totalBottles = inCellar.reduce((acc, curr) => acc + curr.quantity, 0)
     const uniqueWines = inCellar.length
 
-    // Style breakdown
-    const styles: Record<string, number> = {}
+    // Cellar Value
+    const totalValue = inCellar.reduce((acc, curr) => acc + (curr.purchase_price || 0) * curr.quantity, 0)
+    const bottlesWithPrice = inCellar.filter(w => w.purchase_price !== null).reduce((acc, curr) => acc + curr.quantity, 0)
+    const pctPriced = totalBottles > 0 ? Math.round((bottlesWithPrice / totalBottles) * 100) : 0
+
+    // Style distribution for Pie Chart
+    const styleCounts: Record<string, number> = {}
     inCellar.forEach(w => {
-      const s = w.style.toLowerCase()
-      styles[s] = (styles[s] || 0) + w.quantity
+      const s = w.style.charAt(0).toUpperCase() + w.style.slice(1).toLowerCase()
+      styleCounts[s] = (styleCounts[s] || 0) + w.quantity
+    })
+    
+    const styleData = Object.entries(styleCounts).map(([name, value]) => ({
+      name,
+      value
+    })).sort((a, b) => b.value - a.value)
+
+    // Regions distribution for Bar Chart
+    const regionCounts: Record<string, number> = {}
+    inCellar.forEach(w => {
+      const r = w.region || 'Unknown Region'
+      regionCounts[r] = (regionCounts[r] || 0) + w.quantity
     })
 
-    return { totalBottles, uniqueWines, styles }
+    const regionData = Object.entries(regionCounts)
+      .map(([region, bottles]) => ({ region, bottles }))
+      .sort((a, b) => b.bottles - a.bottles)
+      .slice(0, 5) // Top 5 regions
+
+    return { totalBottles, uniqueWines, totalValue, pctPriced, styleData, regionData }
   }, [wines])
 
-  // Ranked wines that have moved off baseline (participated in at least 1 comparison)
-  const rankedWines = useMemo(() => {
+  // Get Top 3 Elo ranked wines (who have actually participated in comparisons)
+  const topRankedWines = useMemo(() => {
     const eloCol = rankingPerson === 'stephen' ? 'stephen_elo' : 'jennifer_elo'
-    return rankings.filter(w => w[eloCol] !== ELO_BASELINE)
+    return rankings
+      .filter(w => w[eloCol] !== ELO_BASELINE)
+      .slice(0, 3)
   }, [rankings, rankingPerson])
 
-  // Top 10 wines for display (ranked or all sorted by elo)
-  const top10 = useMemo(() => rankings.slice(0, 10), [rankings])
+  const isLoading = loadingWines || loadingRankings || loadingTastings
 
-  const isLoading = loadingWines || loadingRankings || loadingComparisons
-
-  // Helper: describe comparison result for a person
-  const describeResult = (c: Comparison, person: 'stephen' | 'jennifer') => {
-    const winnerId = person === 'stephen' ? c.stephen_winner : c.jennifer_winner
-    if (winnerId === null) return null  // not expressed
-    if (winnerId === c.wine_a_id) return c.wine_a?.producer
-    if (winnerId === c.wine_b_id) return c.wine_b?.producer
-    return 'Tie'
+  // Donut chart color palette mapping
+  const styleColors: Record<string, string> = {
+    Red: '#4A0E17',       // Deep Burgundy
+    White: '#C5A059',     // Metallic Gold
+    Rose: '#EAA89B',      // Blush Rosé
+    Sparkling: '#D8C3A5', // Pale Gold Champagne
+    Orange: '#D97706',    // Amber Orange
+    Dessert: '#8B5CF6',   // Sweet Purple
+    Fortified: '#B91C1C'  // Ruby Fortified
   }
+
+  const defaultColor = '#6E6A64'
 
   if (isLoading) {
     return (
-      <div className="flex-1 bg-[#0c0a09] flex flex-col items-center justify-center p-8 space-y-4">
-        <div className="w-10 h-10 border-4 border-rose-900 border-t-rose-400 rounded-full animate-spin"></div>
-        <p className="text-stone-400 text-xs font-medium">Loading cellar stats...</p>
+      <div className="flex-1 bg-cream flex flex-col items-center justify-center p-8 space-y-4">
+        <div className="w-10 h-10 border-4 border-burgundy border-t-gold rounded-full animate-spin"></div>
+        <p className="text-warm-muted text-xs font-semibold uppercase tracking-wider font-sans">
+          Curating Cellar Statistics...
+        </p>
       </div>
     )
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-[#0c0a09] overflow-y-auto pb-8">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-[#0c0a09]/95 backdrop-blur-md border-b border-stone-850 px-4 py-4">
-        <h2 className="text-stone-100 font-bold text-lg">Cellar Dashboard</h2>
+    <div className="flex-1 overflow-y-auto bg-cream pb-8 px-4 md:px-8 max-w-5xl mx-auto w-full">
+      {/* Welcome Banner */}
+      <div className="py-6 md:py-8 border-b border-warm-border mb-6">
+        <h2 className="text-burgundy font-serif font-black text-2xl md:text-3xl tracking-tight">
+          Cellar Dashboard
+        </h2>
+        <p className="text-warm-muted text-xs md:text-sm mt-1">
+          A high-level view of your current collection, tasting activity, and Elo rankings.
+        </p>
       </div>
 
-      <div className="px-4 py-5 space-y-6">
-        {/* Core Stats Grid */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-[#131110] border border-stone-850 rounded-xl p-4 flex flex-col justify-between">
-            <span className="text-[10px] font-bold text-stone-500 uppercase tracking-widest flex items-center gap-1">
-              <Layers className="h-3 w-3" />
-              <span>Total Bottles</span>
-            </span>
-            <span className="text-rose-400 text-3xl font-black mt-2 font-mono">
-              {stats.totalBottles}
-            </span>
-          </div>
-
-          <div className="bg-[#131110] border border-stone-850 rounded-xl p-4 flex flex-col justify-between">
-            <span className="text-[10px] font-bold text-stone-500 uppercase tracking-widest flex items-center gap-1">
-              <WineIcon className="h-3 w-3" />
-              <span>Unique Cuvées</span>
-            </span>
-            <span className="text-stone-100 text-3xl font-black mt-2 font-mono">
-              {stats.uniqueWines}
-            </span>
-          </div>
-        </div>
-
-        {/* Style Distribution */}
-        <div className="bg-[#131110]/50 border border-stone-850 rounded-xl p-4 space-y-3">
-          <h3 className="text-xs font-bold text-stone-400 uppercase tracking-wider flex items-center gap-1.5 border-b border-stone-850/60 pb-2">
-            <Activity className="h-3.5 w-3.5 text-stone-500" />
-            <span>Style Distribution</span>
-          </h3>
-          <div className="space-y-3">
-            {Object.entries(stats.styles).map(([style, count]) => {
-              const percentage = stats.totalBottles > 0 ? (count / stats.totalBottles) * 100 : 0
-              let barColor = 'bg-stone-500'
-              if (style === 'red') barColor = 'bg-rose-700'
-              else if (style === 'white') barColor = 'bg-amber-300'
-              else if (style === 'rose') barColor = 'bg-pink-400'
-              else if (style === 'sparkling') barColor = 'bg-yellow-400'
-              else if (style === 'orange') barColor = 'bg-orange-500'
-              else if (style === 'dessert') barColor = 'bg-purple-500'
-              else if (style === 'fortified') barColor = 'bg-red-700'
-
-              return (
-                <div key={style} className="space-y-1 text-xs">
-                  <div className="flex justify-between font-semibold capitalize text-stone-300">
-                    <span>{style}</span>
-                    <span className="font-mono text-stone-400">{count} btl ({percentage.toFixed(0)}%)</span>
-                  </div>
-                  <div className="w-full bg-stone-900 h-1.5 rounded-full overflow-hidden">
-                    <div className={`h-full ${barColor} rounded-full transition-all duration-700`} style={{ width: `${percentage}%` }}></div>
-                  </div>
-                </div>
-              )
-            })}
-            {Object.keys(stats.styles).length === 0 && (
-              <p className="text-stone-600 text-xs italic text-center py-3">No bottles in cellar.</p>
-            )}
-          </div>
-        </div>
-
-        {/* === ELO RANKINGS === */}
-        <div className="bg-[#131110]/50 border border-stone-850 rounded-xl overflow-hidden">
-          {/* Rankings Header + Person Toggle */}
-          <div className="px-4 py-3 border-b border-stone-850/60 flex items-center justify-between">
-            <h3 className="text-xs font-bold text-stone-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Trophy className="h-3.5 w-3.5 text-amber-400" />
-              <span>Elo Rankings</span>
-            </h3>
-            <div className="flex items-center bg-stone-900 border border-stone-800 rounded-lg p-0.5 text-[10px] font-bold">
-              <button
-                onClick={() => setRankingPerson('stephen')}
-                className={`px-2.5 py-1 rounded-md transition-all ${
-                  rankingPerson === 'stephen'
-                    ? 'bg-rose-900 text-rose-100 border border-rose-800'
-                    : 'text-stone-500 hover:text-stone-300'
-                }`}
-              >
-                Stephen
-              </button>
-              <button
-                onClick={() => setRankingPerson('jennifer')}
-                className={`px-2.5 py-1 rounded-md transition-all ${
-                  rankingPerson === 'jennifer'
-                    ? 'bg-purple-900 text-purple-100 border border-purple-800'
-                    : 'text-stone-500 hover:text-stone-300'
-                }`}
-              >
-                Jennifer
-              </button>
+      <div className="space-y-6">
+        {/* KPI Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Total Bottles */}
+          <div className="bg-white border border-warm-border rounded-xl p-5 shadow-sm flex items-center gap-4">
+            <div className="p-3 bg-burgundy-light rounded-lg text-burgundy shrink-0">
+              <Layers className="h-6 w-6" />
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-warm-muted uppercase tracking-widest block font-sans">
+                Total Bottles
+              </span>
+              <span className="text-2xl font-bold font-serif text-charcoal mt-1 block">
+                {dashboardStats.totalBottles}
+              </span>
             </div>
           </div>
 
-          {/* Rankings list */}
-          <div className="divide-y divide-stone-850/40">
-            {rankedWines.length === 0 ? (
-              <div className="px-4 py-8 text-center space-y-2">
-                <GitCompare className="h-7 w-7 text-stone-700 mx-auto" />
-                <p className="text-stone-500 text-xs font-semibold">No comparisons logged yet</p>
-                <p className="text-stone-600 text-[10px] max-w-xs mx-auto leading-relaxed">
-                  Tell Claude which wine you preferred after your next tasting. Rankings will appear here as comparisons are logged.
-                </p>
+          {/* Unique Cuvées */}
+          <div className="bg-white border border-warm-border rounded-xl p-5 shadow-sm flex items-center gap-4">
+            <div className="p-3 bg-gold-light rounded-lg text-gold shrink-0">
+              <WineIcon className="h-6 w-6" />
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-warm-muted uppercase tracking-widest block font-sans">
+                Unique Cuvées
+              </span>
+              <span className="text-2xl font-bold font-serif text-charcoal mt-1 block">
+                {dashboardStats.uniqueWines}
+              </span>
+            </div>
+          </div>
+
+          {/* Cellar Value */}
+          <div className="bg-white border border-warm-border rounded-xl p-5 shadow-sm flex items-center gap-4">
+            <div className="p-3 bg-emerald-50 rounded-lg text-emerald-700 shrink-0">
+              <DollarSign className="h-6 w-6" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="text-[10px] font-bold text-warm-muted uppercase tracking-widest block font-sans">
+                Cellar Value
+              </span>
+              <span className="text-2xl font-bold font-serif text-charcoal mt-1 block">
+                ${dashboardStats.totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </span>
+              <span className="text-[9px] text-warm-muted block mt-0.5 truncate" title={`Based on ${dashboardStats.pctPriced}% of inventory`}>
+                Est. value ({dashboardStats.pctPriced}% priced)
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Charts Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Style Distribution Donut */}
+          <div className="bg-white border border-warm-border rounded-xl p-5 shadow-sm flex flex-col">
+            <h3 className="text-sm font-serif font-bold text-burgundy border-b border-warm-border pb-3 mb-4 flex items-center gap-2">
+              <WineIcon className="h-4 w-4" />
+              <span>Style Distribution</span>
+            </h3>
+            {dashboardStats.styleData.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center py-10 text-xs italic text-warm-muted">
+                No bottles in cellar.
               </div>
             ) : (
-              top10.map((wine, idx) => {
-                const elo = rankingPerson === 'stephen' ? wine.stephen_elo : wine.jennifer_elo
-                const isBaseline = elo === ELO_BASELINE
-                const eloDisplay = elo.toFixed(0)
-                const rankColor =
-                  idx === 0 ? 'text-amber-400' :
-                  idx === 1 ? 'text-stone-300' :
-                  idx === 2 ? 'text-amber-700' :
-                  'text-stone-500'
+              <div className="flex flex-col sm:flex-row items-center justify-around gap-4 flex-1">
+                {/* Recharts Pie */}
+                <div className="w-40 h-40 shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={dashboardStats.styleData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={75}
+                        paddingAngle={2}
+                        dataKey="value"
+                      >
+                        {dashboardStats.styleData.map((entry, index) => (
+                          <Cell 
+                            key={`cell-${index}`} 
+                            fill={styleColors[entry.name] || defaultColor} 
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{ 
+                          fontFamily: 'var(--font-sans)', 
+                          fontSize: '11px',
+                          backgroundColor: '#FFF',
+                          border: '1px solid var(--color-warm-border)',
+                          borderRadius: '6px'
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
 
-                return (
-                  <div
-                    key={wine.id}
-                    onClick={() => onSelectWine(wine.id)}
-                    className="flex items-center gap-3 px-4 py-3 hover:bg-stone-900/40 cursor-pointer transition-colors active:scale-[0.99] duration-100"
+                {/* Legend list */}
+                <div className="space-y-2 text-xs w-full sm:w-auto">
+                  {dashboardStats.styleData.map((item) => (
+                    <div key={item.name} className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2">
+                        <span 
+                          className="w-3 h-3 rounded-full shrink-0" 
+                          style={{ backgroundColor: styleColors[item.name] || defaultColor }}
+                        />
+                        <span className="font-medium text-charcoal">{item.name}</span>
+                      </div>
+                      <span className="font-semibold text-warm-muted">{item.value} {item.value === 1 ? 'btl' : 'btls'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Top Regions Bar Chart */}
+          <div className="bg-white border border-warm-border rounded-xl p-5 shadow-sm flex flex-col">
+            <h3 className="text-sm font-serif font-bold text-burgundy border-b border-warm-border pb-3 mb-4 flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              <span>Top Regions</span>
+            </h3>
+            {dashboardStats.regionData.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center py-10 text-xs italic text-warm-muted">
+                No bottles in cellar.
+              </div>
+            ) : (
+              <div className="h-48 w-full flex-1">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={dashboardStats.regionData}
+                    layout="vertical"
+                    margin={{ top: 5, right: 10, left: 10, bottom: 5 }}
                   >
-                    {/* Rank number */}
-                    <span className={`text-sm font-black w-5 text-right shrink-0 ${rankColor}`}>
-                      {idx + 1}
-                    </span>
-
-                    {/* Wine info */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-stone-200 text-xs font-bold truncate">
-                        {wine.producer}
-                        {wine.name && <span className="text-stone-400 font-normal"> · {wine.name}</span>}
-                      </p>
-                      <p className="text-stone-500 text-[10px] mt-0.5">
-                        {wine.vintage || 'NV'} · <span className="capitalize">{wine.style}</span>
-                        {wine.region && ` · ${wine.region}`}
-                      </p>
-                    </div>
-
-                    {/* Elo badge */}
-                    <div className="shrink-0 text-right">
-                      <span className={`text-sm font-black font-mono ${isBaseline ? 'text-stone-600' : rankingPerson === 'stephen' ? 'text-rose-400' : 'text-purple-400'}`}>
-                        {eloDisplay}
-                      </span>
-                      {isBaseline && (
-                        <p className="text-[9px] text-stone-600 mt-0.5">unranked</p>
-                      )}
-                    </div>
-                  </div>
-                )
-              })
+                    <XAxis type="number" hide />
+                    <YAxis 
+                      dataKey="region" 
+                      type="category" 
+                      axisLine={false}
+                      tickLine={false}
+                      width={90}
+                      style={{ fontSize: '10px', fontFamily: 'var(--font-sans)', fill: 'var(--color-charcoal)' }}
+                    />
+                    <Tooltip 
+                      cursor={{ fill: 'rgba(74, 14, 23, 0.03)' }}
+                      contentStyle={{ 
+                        fontFamily: 'var(--font-sans)', 
+                        fontSize: '11px',
+                        backgroundColor: '#FFF',
+                        border: '1px solid var(--color-warm-border)',
+                        borderRadius: '6px'
+                      }}
+                    />
+                    <Bar 
+                      dataKey="bottles" 
+                      fill="#C5A059" 
+                      radius={[0, 4, 4, 0]}
+                      barSize={16}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             )}
           </div>
         </div>
 
-        {/* === RECENT COMPARISONS === */}
-        {comparisons.length > 0 && (
-          <div className="bg-[#131110]/50 border border-stone-850 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-stone-850/60">
-              <h3 className="text-xs font-bold text-stone-400 uppercase tracking-wider flex items-center gap-1.5">
-                <GitCompare className="h-3.5 w-3.5 text-stone-500" />
-                <span>Recent Comparisons</span>
+        {/* ELO Rankings Widget & Recent Activity */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Elo Rankings Card */}
+          <div className="bg-white border border-warm-border rounded-xl p-5 shadow-sm flex flex-col">
+            <div className="flex items-center justify-between border-b border-warm-border pb-3 mb-4">
+              <h3 className="text-sm font-serif font-bold text-burgundy flex items-center gap-2">
+                <Trophy className="h-4 w-4 text-gold" />
+                <span>Top Elo Rankings</span>
               </h3>
+              
+              {/* Stephen / Jennifer Toggle */}
+              <div className="flex bg-cream border border-warm-border rounded-full p-0.5 text-[10px] font-bold">
+                <button
+                  onClick={() => setRankingPerson('stephen')}
+                  className={`px-3 py-1 rounded-full transition-all cursor-pointer ${
+                    rankingPerson === 'stephen'
+                      ? 'bg-burgundy text-white shadow-sm'
+                      : 'text-warm-muted hover:text-charcoal'
+                  }`}
+                >
+                  Stephen
+                </button>
+                <button
+                  onClick={() => setRankingPerson('jennifer')}
+                  className={`px-3 py-1 rounded-full transition-all cursor-pointer ${
+                    rankingPerson === 'jennifer'
+                      ? 'bg-burgundy text-white shadow-sm'
+                      : 'text-warm-muted hover:text-charcoal'
+                  }`}
+                >
+                  Jennifer
+                </button>
+              </div>
             </div>
-            <div className="divide-y divide-stone-850/40">
-              {comparisons.slice(0, 5).map((c) => {
-                const stephenResult = describeResult(c, 'stephen')
-                const jenniferResult = describeResult(c, 'jennifer')
 
-                return (
-                  <div key={c.id} className="px-4 py-3 space-y-2">
-                    {/* Date */}
-                    <span className="text-[10px] text-stone-500 font-medium">
-                      {new Date(c.comparison_date).toLocaleDateString()}
-                      {c.occasion && ` · ${c.occasion}`}
-                    </span>
-
-                    {/* The matchup */}
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-stone-300 font-semibold truncate">
-                        {c.wine_a?.producer}
-                        {c.wine_a?.vintage && ` '${String(c.wine_a.vintage).slice(2)}`}
-                      </span>
-                      <span className="text-stone-600 shrink-0">vs</span>
-                      <span className="text-stone-300 font-semibold truncate">
-                        {c.wine_b?.producer}
-                        {c.wine_b?.vintage && ` '${String(c.wine_b.vintage).slice(2)}`}
-                      </span>
-                    </div>
-
-                    {/* Results */}
-                    <div className="flex gap-3 text-[10px]">
-                      {stephenResult && (
-                        <span className="text-stone-400">
-                          <span className="text-rose-400 font-bold">S:</span>{' '}
-                          {stephenResult}
+            <div className="flex-1 flex flex-col justify-between">
+              {topRankedWines.length === 0 ? (
+                <div className="py-8 text-center space-y-2 flex-1 flex flex-col justify-center items-center">
+                  <Trophy className="h-7 w-7 text-warm-border" />
+                  <p className="text-charcoal text-xs font-semibold">No comparison data yet</p>
+                  <p className="text-warm-muted text-[10px] max-w-xs leading-relaxed text-center">
+                    Compare wines during tastings to build your Elo rankings list here.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-warm-border/50">
+                  {topRankedWines.map((wine, idx) => {
+                    const elo = rankingPerson === 'stephen' ? wine.stephen_elo : wine.jennifer_elo
+                    const colors = ['text-gold', 'text-stone-400', 'text-amber-800']
+                    
+                    return (
+                      <Link
+                        key={wine.id}
+                        to={`/wine/${wine.id}`}
+                        className="flex items-center gap-3 py-3 hover:bg-cream/40 transition-colors first:pt-0 last:pb-0"
+                      >
+                        {/* Rank */}
+                        <span className={`text-base font-serif font-black w-6 text-center ${colors[idx] || 'text-warm-muted'}`}>
+                          {idx + 1}
                         </span>
-                      )}
-                      {jenniferResult && (
-                        <span className="text-stone-400">
-                          <span className="text-purple-400 font-bold">J:</span>{' '}
-                          {jenniferResult}
-                        </span>
-                      )}
-                    </div>
 
-                    {c.notes && (
-                      <p className="text-[10px] text-stone-500 italic leading-relaxed">{c.notes}</p>
-                    )}
-                  </div>
-                )
-              })}
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-charcoal text-xs font-bold truncate">
+                            {wine.producer}
+                          </p>
+                          <p className="text-warm-muted text-[10px] mt-0.5 truncate font-sans">
+                            {wine.vintage || 'NV'} · {wine.name || 'Cuvée'}
+                          </p>
+                        </div>
+
+                        {/* Elo */}
+                        <span className="font-mono text-xs font-bold text-burgundy bg-burgundy-light px-2 py-0.5 rounded shrink-0">
+                          {elo.toFixed(0)} ELO
+                        </span>
+                      </Link>
+                    )
+                  })}
+                </div>
+              )}
+              
+              <Link 
+                to="/cellar" 
+                className="mt-4 pt-3 border-t border-warm-border/60 text-xs font-serif font-bold text-burgundy hover:text-burgundy-hover flex items-center justify-center gap-1 hover:gap-1.5 transition-all text-center"
+              >
+                <span>View Full Cellar List</span>
+                <ChevronRight className="h-3 w-3" />
+              </Link>
             </div>
           </div>
-        )}
 
-        {/* Footer note */}
-        <div className="bg-stone-900/10 border border-dashed border-stone-850 rounded-xl p-4 text-center">
-          <HelpCircle className="h-5 w-5 text-stone-600 mx-auto mb-1.5" />
-          <p className="text-[11px] text-stone-400 mt-1 max-w-xs mx-auto leading-relaxed">
-            Rankings update automatically as you log comparisons through the Claude Project. All wines start at Elo 1500.
-          </p>
+          {/* Recent Activity Card */}
+          <div className="bg-white border border-warm-border rounded-xl p-5 shadow-sm flex flex-col">
+            <h3 className="text-sm font-serif font-bold text-burgundy border-b border-warm-border pb-3 mb-4 flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              <span>Recent Activity</span>
+            </h3>
+
+            <div className="flex-1 flex flex-col justify-between">
+              {tastings.length === 0 ? (
+                <div className="py-8 text-center space-y-2 flex-1 flex flex-col justify-center items-center">
+                  <Calendar className="h-7 w-7 text-warm-border" />
+                  <p className="text-charcoal text-xs font-semibold">No recent tastings</p>
+                  <p className="text-warm-muted text-[10px] max-w-xs leading-relaxed text-center">
+                    Tasting events logged in the system will show up here.
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-warm-border/50">
+                  {tastings.map((t) => (
+                    <div key={t.id} className="py-3 first:pt-0 last:pb-0 flex flex-col">
+                      <div className="flex items-center justify-between text-[9px] text-warm-muted font-semibold">
+                        <span>{new Date(t.tasting_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                        {t.occasion && <span className="uppercase tracking-wider">{t.occasion}</span>}
+                      </div>
+
+                      {t.wines ? (
+                        <Link 
+                          to={`/wine/${t.wines.id}`}
+                          className="text-xs font-bold text-charcoal hover:text-burgundy mt-1 truncate block font-sans"
+                        >
+                          {t.wines.producer} {t.wines.vintage || 'NV'} {t.wines.name && `· ${t.wines.name}`}
+                        </Link>
+                      ) : (
+                        <span className="text-xs font-bold text-warm-muted mt-1 italic block font-sans">Non-cellar Wine Tasting</span>
+                      )}
+
+                      {t.notes && (
+                        <p className="text-[10px] text-warm-muted leading-relaxed truncate mt-1 italic font-sans">
+                          "{t.notes}"
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <Link 
+                to="/tastings" 
+                className="mt-4 pt-3 border-t border-warm-border/60 text-xs font-serif font-bold text-burgundy hover:text-burgundy-hover flex items-center justify-center gap-1 hover:gap-1.5 transition-all text-center"
+              >
+                <span>View Entire Tasting Log</span>
+                <ChevronRight className="h-3 w-3" />
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>
