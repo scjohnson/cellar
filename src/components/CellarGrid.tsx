@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { getWines } from '../lib/queries'
 import type { Wine } from '../lib/queries'
-import { Search, Filter, Wine as WineIcon, MapPin, Calendar, Info } from 'lucide-react'
+import { Search, Filter, Wine as WineIcon, MapPin, Calendar, Info, BarChart3, X } from 'lucide-react'
+import { Treemap, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts'
 
 type SortField = 'producer' | 'vintage' | 'quantity' | 'region'
 type SortOrder = 'asc' | 'desc'
@@ -23,6 +24,7 @@ export default function CellarGrid() {
   const [sortField, setSortField] = useState<SortField>('producer')
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc')
   const [showFilters, setShowFilters] = useState(false)
+  const [showLocations, setShowLocations] = useState(false)
 
   // Current year for drink window checks
   const currentYear = new Date().getFullYear()
@@ -164,6 +166,94 @@ export default function CellarGrid() {
     }
   }
 
+  // Location data for Treemap
+  const locationData = useMemo(() => {
+    const inCellar = wines.filter(w => w.quantity > 0 && w.cellar_location)
+    if (inCellar.length === 0) return []
+    
+    const locationMap: Record<string, Record<string, number>> = {}
+    
+    inCellar.forEach(w => {
+      const loc = w.cellar_location || 'Unassigned'
+      const style = w.style || 'Other'
+      if (!locationMap[loc]) locationMap[loc] = {}
+      if (!locationMap[loc][style]) locationMap[loc][style] = 0
+      locationMap[loc][style] += w.quantity
+    })
+
+    const getStyleColor = (style: string) => {
+      switch (style.toLowerCase()) {
+        case 'red': return '#4A0E17' // burgundy
+        case 'white': return '#C5A059' // gold
+        case 'rose': return '#fb7185' // rose-400
+        case 'sparkling': return '#fef08a' // yellow-200
+        case 'dessert': return '#c084fc' // purple-400
+        case 'orange': return '#fb923c' // orange-400
+        case 'fortified': return '#9f1239' // rose-800
+        default: return '#a8a29e' // stone-400
+      }
+    }
+
+    return Object.entries(locationMap).map(([loc, styles]) => ({
+      name: loc,
+      children: Object.entries(styles).map(([style, count]) => ({
+        name: style,
+        locationName: loc,
+        size: count,
+        fill: getStyleColor(style)
+      }))
+    }))
+  }, [wines])
+
+  const TreemapContent = (props: any) => {
+    const { depth, x, y, width, height, fill, name } = props
+    
+    if (depth === 2) {
+      return (
+        <g>
+          <rect
+            x={x}
+            y={y}
+            width={width}
+            height={height}
+            fill={fill}
+            stroke="#F9F6F0"
+            strokeWidth={2}
+            className="hover:opacity-80 transition-opacity cursor-pointer"
+          />
+          {width > 45 && height > 30 && (
+            <text
+              x={x + width / 2}
+              y={y + height / 2 + 4}
+              textAnchor="middle"
+              fill="#fff"
+              fontSize={10}
+              className="font-sans font-bold"
+              style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.6)' }}
+            >
+              {name.substring(0, 8)}
+            </text>
+          )}
+        </g>
+      )
+    }
+    return null
+  }
+
+  const TreemapTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload
+      return (
+        <div className="bg-white/95 backdrop-blur-sm border border-warm-border p-3 rounded-lg shadow-lg">
+          <p className="font-serif font-bold text-charcoal">{data.locationName}</p>
+          <p className="text-sm font-bold" style={{ color: data.fill }}>{data.name}</p>
+          <p className="text-xs text-warm-muted">{data.size} bottles</p>
+        </div>
+      )
+    }
+    return null
+  }
+
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-cream max-w-5xl mx-auto w-full">
       {/* Search and Filters Bar */}
@@ -270,7 +360,20 @@ export default function CellarGrid() {
 
         {/* Sort & Count row */}
         <div className="flex items-center justify-between text-xs text-warm-muted pt-1 border-t border-warm-border/55">
-          <span>{filteredAndSortedWines.length} wines found</span>
+          <div className="flex items-center gap-3">
+            <span>{filteredAndSortedWines.length} wines found</span>
+            <button
+              onClick={() => setShowLocations(!showLocations)}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded border font-semibold transition-all cursor-pointer ${
+                showLocations
+                  ? 'bg-charcoal border-charcoal text-white'
+                  : 'bg-cream border-warm-border text-charcoal hover:border-gold'
+              }`}
+            >
+              {showLocations ? <X className="h-3 w-3" /> : <BarChart3 className="h-3 w-3" />}
+              <span>Map</span>
+            </button>
+          </div>
           <div className="flex items-center gap-3">
             <span className="text-[10px] text-warm-muted uppercase font-semibold">Sort:</span>
             <button
@@ -294,6 +397,37 @@ export default function CellarGrid() {
           </div>
         </div>
       </div>
+
+      {/* Location Treemap Drawer */}
+      {showLocations && locationData.length > 0 && (
+        <div className="bg-white border-b border-warm-border p-4 shadow-sm animate-slide-down shrink-0">
+          <h3 className="font-serif font-bold text-charcoal mb-4 flex items-center gap-2 text-sm">
+            <MapPin className="h-4 w-4 text-burgundy" />
+            Bottle Distribution by Location
+          </h3>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <Treemap
+                data={locationData}
+                dataKey="size"
+                aspectRatio={4 / 3}
+                stroke="#F9F6F0"
+                content={<TreemapContent />}
+                animationDuration={600}
+              >
+                <RechartsTooltip content={<TreemapTooltip />} />
+              </Treemap>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3 justify-center text-[10px] uppercase font-bold text-warm-muted tracking-wider">
+            <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#4A0E17]"></span>Red</div>
+            <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#C5A059]"></span>White</div>
+            <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-400"></span>Rosé</div>
+            <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-200"></span>Sparkling</div>
+            <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-400"></span>Dessert</div>
+          </div>
+        </div>
+      )}
 
       {/* Main Grid Content */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
