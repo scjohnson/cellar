@@ -1,0 +1,28 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+
+# Local environment — contains Supabase secrets, never commit
+*.local
+.env.local
+.env.*.local
+
+# Editor directories and files — keep .vscode/settings.json (Claude config)
+.vscode/*
+!.vscode/settings.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
