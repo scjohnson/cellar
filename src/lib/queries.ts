@@ -1,5 +1,14 @@
 import { supabase } from './supabaseClient'
 
+export interface WineStock {
+  id: string
+  wine_id: string
+  cellar_location: string | null
+  quantity: number
+  created_at: string
+  updated_at: string
+}
+
 export interface Wine {
   id: string
   producer: string
@@ -12,9 +21,8 @@ export interface Wine {
   style: string // 'red' | 'white' | 'rose' | 'sparkling' | 'fortified' | 'dessert' | 'orange'
   classification: string | null
   alcohol_pct: number | null
-  quantity: number
   format: string
-  cellar_location: string | null
+  wine_stock: WineStock[]
   purchase_date: string | null
   purchase_price: number | null
   purchase_source: string | null
@@ -34,6 +42,7 @@ export interface Tasting {
   tasting_date: string
   occasion: string | null
   location: string | null
+  cellar_location?: string | null
   companions: string | null
   food_pairing: string | null
   notes: string | null
@@ -60,25 +69,28 @@ export interface Comparison {
  * By default, fetches active wines (quantity > 0) but can fetch all.
  */
 export async function getWines(inCellarOnly = true): Promise<Wine[]> {
-  let query = supabase
-    .from('wines')
-    .select('*')
-
   if (inCellarOnly) {
-    query = query.gt('quantity', 0)
+    const { data, error } = await supabase
+      .from('wines')
+      .select('*, wine_stock!inner(*)')
+      .gt('wine_stock.quantity', 0)
+      .order('producer', { ascending: true })
+      .order('vintage', { ascending: false, nullsFirst: false })
+      .order('name', { ascending: true })
+
+    if (error) throw error
+    return (data || []) as Wine[]
+  } else {
+    const { data, error } = await supabase
+      .from('wines')
+      .select('*, wine_stock(*)')
+      .order('producer', { ascending: true })
+      .order('vintage', { ascending: false, nullsFirst: false })
+      .order('name', { ascending: true })
+
+    if (error) throw error
+    return (data || []) as Wine[]
   }
-
-  const { data, error } = await query
-    .order('producer', { ascending: true })
-    .order('vintage', { ascending: false, nullsFirst: false })
-    .order('name', { ascending: true })
-
-  if (error) {
-    console.error('Error fetching wines:', error)
-    throw error
-  }
-
-  return (data || []) as Wine[]
 }
 
 /**
@@ -87,7 +99,7 @@ export async function getWines(inCellarOnly = true): Promise<Wine[]> {
 export async function getWineById(id: string): Promise<Wine | null> {
   const { data, error } = await supabase
     .from('wines')
-    .select('*')
+    .select('*, wine_stock(*)')
     .eq('id', id)
     .single()
 
@@ -109,7 +121,7 @@ export async function getWineRankings(person: 'stephen' | 'jennifer'): Promise<W
 
   const { data, error } = await supabase
     .from('wines')
-    .select('*')
+    .select('*, wine_stock(*)')
     .order(eloCol, { ascending: false })
     .order('producer', { ascending: true })
 
@@ -146,7 +158,7 @@ export async function getTastingsForWine(wineId: string): Promise<Tasting[]> {
 export async function getRecentTastings(limit = 50): Promise<Tasting[]> {
   const { data, error } = await supabase
     .from('tastings')
-    .select('*, wines(*)')
+    .select('*, wines(*, wine_stock(*))')
     .order('tasting_date', { ascending: false })
     .limit(limit)
 
@@ -167,12 +179,12 @@ export async function getComparisonsForWine(wineId: string): Promise<Comparison[
   const [resA, resB] = await Promise.all([
     supabase
       .from('comparisons')
-      .select('*, wine_a:wines!comparisons_wine_a_id_fkey(*), wine_b:wines!comparisons_wine_b_id_fkey(*)')
+      .select('*, wine_a:wines!comparisons_wine_a_id_fkey(*, wine_stock(*)), wine_b:wines!comparisons_wine_b_id_fkey(*, wine_stock(*))')
       .eq('wine_a_id', wineId)
       .order('comparison_date', { ascending: false }),
     supabase
       .from('comparisons')
-      .select('*, wine_a:wines!comparisons_wine_a_id_fkey(*), wine_b:wines!comparisons_wine_b_id_fkey(*)')
+      .select('*, wine_a:wines!comparisons_wine_a_id_fkey(*, wine_stock(*)), wine_b:wines!comparisons_wine_b_id_fkey(*, wine_stock(*))')
       .eq('wine_b_id', wineId)
       .order('comparison_date', { ascending: false }),
   ])
@@ -191,7 +203,7 @@ export async function getComparisonsForWine(wineId: string): Promise<Comparison[
 export async function getRecentComparisons(limit = 30): Promise<Comparison[]> {
   const { data, error } = await supabase
     .from('comparisons')
-    .select('*, wine_a:wines!comparisons_wine_a_id_fkey(*), wine_b:wines!comparisons_wine_b_id_fkey(*)')
+    .select('*, wine_a:wines!comparisons_wine_a_id_fkey(*, wine_stock(*)), wine_b:wines!comparisons_wine_b_id_fkey(*, wine_stock(*))')
     .order('comparison_date', { ascending: false })
     .limit(limit)
 
@@ -219,4 +231,12 @@ export async function insertTasting(tasting: Partial<Tasting>): Promise<Tasting>
   }
 
   return data as Tasting
+}
+
+/**
+ * Helper to calculate total bottles for a wine across all locations.
+ */
+export function getTotalQuantity(wine: Wine): number {
+  if (!wine.wine_stock) return 0
+  return wine.wine_stock.reduce((sum, stock) => sum + stock.quantity, 0)
 }

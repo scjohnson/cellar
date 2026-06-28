@@ -1,12 +1,25 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { getWines, getWineRankings, getRecentTastings } from '../lib/queries'
+import { getWines, getWineRankings, getRecentTastings, getTotalQuantity } from '../lib/queries'
 import type { Wine, Tasting } from '../lib/queries'
-import { Wine as WineIcon, Trophy, Layers, DollarSign, TrendingUp, ChevronRight, Calendar } from 'lucide-react'
-import { ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts'
+import { Wine as WineIcon, Trophy, Layers, DollarSign, TrendingUp, ChevronRight, Calendar, Users } from 'lucide-react'
+import { ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ScatterChart, Scatter, ZAxis, ReferenceLine } from 'recharts'
 
 const ELO_BASELINE = 1500
+
+// Donut chart color palette mapping
+const styleColors: Record<string, string> = {
+  Red: '#4A0E17',       // Deep Burgundy
+  White: '#C5A059',     // Metallic Gold
+  Rose: '#EAA89B',      // Blush Rosé
+  Sparkling: '#D8C3A5', // Pale Gold Champagne
+  Orange: '#D97706',    // Amber Orange
+  Dessert: '#8B5CF6',   // Sweet Purple
+  Fortified: '#B91C1C'  // Ruby Fortified
+}
+
+const defaultColor = '#6E6A64'
 
 export default function CellarDashboard() {
   const [rankingPerson, setRankingPerson] = useState<'stephen' | 'jennifer'>('stephen')
@@ -31,20 +44,20 @@ export default function CellarDashboard() {
 
   // Process data for KPIs and Charts
   const dashboardStats = useMemo(() => {
-    const inCellar = wines.filter(w => w.quantity > 0)
-    const totalBottles = inCellar.reduce((acc, curr) => acc + curr.quantity, 0)
+    const inCellar = wines.filter(w => getTotalQuantity(w) > 0)
+    const totalBottles = inCellar.reduce((acc, curr) => acc + getTotalQuantity(curr), 0)
     const uniqueWines = inCellar.length
 
     // Cellar Value
-    const totalValue = inCellar.reduce((acc, curr) => acc + (curr.purchase_price || 0) * curr.quantity, 0)
-    const bottlesWithPrice = inCellar.filter(w => w.purchase_price !== null).reduce((acc, curr) => acc + curr.quantity, 0)
+    const totalValue = inCellar.reduce((acc, curr) => acc + (curr.purchase_price || 0) * getTotalQuantity(curr), 0)
+    const bottlesWithPrice = inCellar.filter(w => w.purchase_price !== null).reduce((acc, curr) => acc + getTotalQuantity(curr), 0)
     const pctPriced = totalBottles > 0 ? Math.round((bottlesWithPrice / totalBottles) * 100) : 0
 
     // Style distribution for Pie Chart
     const styleCounts: Record<string, number> = {}
     inCellar.forEach(w => {
       const s = w.style.charAt(0).toUpperCase() + w.style.slice(1).toLowerCase()
-      styleCounts[s] = (styleCounts[s] || 0) + w.quantity
+      styleCounts[s] = (styleCounts[s] || 0) + getTotalQuantity(w)
     })
     
     const styleData = Object.entries(styleCounts).map(([name, value]) => ({
@@ -56,7 +69,7 @@ export default function CellarDashboard() {
     const regionCounts: Record<string, number> = {}
     inCellar.forEach(w => {
       const r = w.region || 'Unknown Region'
-      regionCounts[r] = (regionCounts[r] || 0) + w.quantity
+      regionCounts[r] = (regionCounts[r] || 0) + getTotalQuantity(w)
     })
 
     const regionData = Object.entries(regionCounts)
@@ -67,7 +80,6 @@ export default function CellarDashboard() {
     return { totalBottles, uniqueWines, totalValue, pctPriced, styleData, regionData }
   }, [wines])
 
-  // Get Top 3 Elo ranked wines (who have actually participated in comparisons)
   const topRankedWines = useMemo(() => {
     const eloCol = rankingPerson === 'stephen' ? 'stephen_elo' : 'jennifer_elo'
     return rankings
@@ -75,20 +87,25 @@ export default function CellarDashboard() {
       .slice(0, 3)
   }, [rankings, rankingPerson])
 
+  // Data for Stephen vs Jennifer Elo Scatter Plot
+  const scatterData = useMemo(() => {
+    return wines
+      .filter(w => w.stephen_elo !== ELO_BASELINE || w.jennifer_elo !== ELO_BASELINE)
+      .map(w => {
+        // Find style color safely
+        const styleStr = w.style || 'Other'
+        const styleName = styleStr.charAt(0).toUpperCase() + styleStr.slice(1).toLowerCase()
+        return {
+          name: `${w.producer} ${w.vintage || 'NV'}`,
+          stephen: Math.round(w.stephen_elo),
+          jennifer: Math.round(w.jennifer_elo),
+          fill: styleColors[styleName] || defaultColor,
+          id: w.id
+        }
+      })
+  }, [wines])
+
   const isLoading = loadingWines || loadingRankings || loadingTastings
-
-  // Donut chart color palette mapping
-  const styleColors: Record<string, string> = {
-    Red: '#4A0E17',       // Deep Burgundy
-    White: '#C5A059',     // Metallic Gold
-    Rose: '#EAA89B',      // Blush Rosé
-    Sparkling: '#D8C3A5', // Pale Gold Champagne
-    Orange: '#D97706',    // Amber Orange
-    Dessert: '#8B5CF6',   // Sweet Purple
-    Fortified: '#B91C1C'  // Ruby Fortified
-  }
-
-  const defaultColor = '#6E6A64'
 
   if (isLoading) {
     return (
@@ -418,6 +435,80 @@ export default function CellarDashboard() {
               </Link>
             </div>
           </div>
+        </div>
+
+        {/* Household Elo Consensus Scatter Plot */}
+        <div className="bg-white border border-warm-border rounded-xl p-5 shadow-sm mt-6">
+          <h3 className="text-sm font-serif font-bold text-burgundy border-b border-warm-border pb-3 mb-4 flex items-center gap-2">
+            <Users className="h-4 w-4 text-gold" />
+            <span>Household Elo Consensus</span>
+          </h3>
+          {scatterData.length === 0 ? (
+            <div className="py-12 text-center text-xs italic text-warm-muted">
+              No comparison data yet to plot consensus.
+            </div>
+          ) : (
+            <div className="h-64 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <ScatterChart margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+                  <XAxis 
+                    type="number" 
+                    dataKey="stephen" 
+                    name="Stephen Elo" 
+                    domain={['auto', 'auto']} 
+                    tickLine={false} 
+                    axisLine={false}
+                    tick={{ fontSize: 10, fill: '#8b847c', fontFamily: 'var(--font-sans)' }}
+                    label={{ value: "Stephen's Rating", position: 'insideBottom', offset: -5, fontSize: 10, fill: '#8b847c' }}
+                  />
+                  <YAxis 
+                    type="number" 
+                    dataKey="jennifer" 
+                    name="Jennifer Elo" 
+                    domain={['auto', 'auto']} 
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fontSize: 10, fill: '#8b847c', fontFamily: 'var(--font-sans)' }}
+                    label={{ value: "Jennifer's Rating", angle: -90, position: 'insideLeft', offset: 10, fontSize: 10, fill: '#8b847c' }}
+                  />
+                  <ZAxis type="number" range={[50, 50]} />
+                  <Tooltip 
+                    cursor={{ strokeDasharray: '3 3' }}
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload
+                        return (
+                          <div className="bg-white/95 backdrop-blur-sm border border-warm-border p-3 rounded-lg shadow-lg font-sans">
+                            <p className="font-bold text-charcoal text-xs mb-1 font-serif">{data.name}</p>
+                            <p className="text-[10px] font-semibold text-warm-muted">Stephen: <span className="text-burgundy">{data.stephen}</span></p>
+                            <p className="text-[10px] font-semibold text-warm-muted">Jennifer: <span className="text-burgundy">{data.jennifer}</span></p>
+                          </div>
+                        )
+                      }
+                      return null
+                    }}
+                  />
+                  {/* Reference line for perfect agreement (y = x) */}
+                  <ReferenceLine 
+                    segment={[{ x: 1300, y: 1300 }, { x: 1700, y: 1700 }]} 
+                    stroke="#D8C3A5" 
+                    strokeDasharray="4 4" 
+                  />
+                  <Scatter 
+                    data={scatterData} 
+                    shape="circle" 
+                  >
+                    {scatterData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} className="hover:opacity-80 transition-opacity cursor-pointer" />
+                    ))}
+                  </Scatter>
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          <p className="text-center text-[10px] text-warm-muted uppercase tracking-wider font-bold mt-2 font-sans">
+            Wines above the line are preferred by Jennifer; below the line by Stephen.
+          </p>
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { getWineById, getTastingsForWine, getComparisonsForWine } from '../lib/queries'
+import { getWineById, getTastingsForWine, getComparisonsForWine, getTotalQuantity } from '../lib/queries'
 import type { Wine, Tasting, Comparison } from '../lib/queries'
 import { ChevronLeft, MapPin, Calendar, DollarSign, Bookmark, ShoppingBag, Percent, BookOpen, Star, AlertCircle, Sparkles, GitCompare, Plus } from 'lucide-react'
 import AddTastingModal from './AddTastingModal'
@@ -118,6 +118,8 @@ export default function WineDetail() {
   }
 
   const drinkWindowInfo = getDrinkWindowInfo()
+  const qty = wine ? getTotalQuantity(wine) : 0
+  const locs = wine?.wine_stock?.filter(s => s.quantity > 0 && s.cellar_location).map(s => s.cellar_location).join(', ')
 
   return (
     <div className="flex-1 flex flex-col bg-cream overflow-y-auto pb-8 max-w-3xl mx-auto w-full">
@@ -206,7 +208,7 @@ export default function WineDetail() {
               Cellar Location
             </span>
             <span className="text-charcoal text-base font-bold mt-1 font-mono">
-              {wine.cellar_location || 'Not Specified'}
+              {locs || 'Not Specified'}
             </span>
           </div>
 
@@ -214,8 +216,8 @@ export default function WineDetail() {
             <span className="text-[10px] font-bold text-warm-muted uppercase tracking-wider font-sans">
               Quantity In Cellar
             </span>
-            <span className={`text-base font-bold mt-1 font-serif ${wine.quantity > 0 ? 'text-burgundy' : 'text-warm-muted'}`}>
-              {wine.quantity} {wine.quantity === 1 ? 'bottle' : 'bottles'}
+            <span className={`text-base font-bold mt-1 font-serif ${qty > 0 ? 'text-burgundy' : 'text-warm-muted'}`}>
+              {qty} {qty === 1 ? 'bottle' : 'bottles'}
             </span>
           </div>
         </div>

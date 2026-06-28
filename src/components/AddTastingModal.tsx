@@ -14,6 +14,7 @@ export default function AddTastingModal({ isOpen, onClose, preselectedWineId }: 
 
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
   const [wineId, setWineId] = useState(preselectedWineId || '')
+  const [cellarLocation, setCellarLocation] = useState('')
   const [occasion, setOccasion] = useState('')
   const [location, setLocation] = useState('')
   const [companions, setCompanions] = useState('')
@@ -23,7 +24,10 @@ export default function AddTastingModal({ isOpen, onClose, preselectedWineId }: 
   // Reset form when opened with a new preselection
   useEffect(() => {
     if (isOpen) {
-      if (preselectedWineId) setWineId(preselectedWineId)
+      if (preselectedWineId) {
+        setWineId(preselectedWineId)
+      }
+      setCellarLocation('')
       setDate(new Date().toISOString().split('T')[0])
       setOccasion('')
       setLocation('')
@@ -61,6 +65,7 @@ export default function AddTastingModal({ isOpen, onClose, preselectedWineId }: 
     mutation.mutate({
       wine_id: wineId,
       tasting_date: date,
+      cellar_location: cellarLocation || null,
       occasion: occasion || null,
       location: location || null,
       companions: companions || null,
@@ -130,6 +135,35 @@ export default function AddTastingModal({ isOpen, onClose, preselectedWineId }: 
                 </div>
               )}
             </div>
+
+            {/* Cellar Location Source */}
+            {selectedWine && selectedWine.wine_stock && selectedWine.wine_stock.some(s => s.quantity > 0 && s.cellar_location) && (
+              <div>
+                <label className="block text-xs font-bold text-charcoal uppercase tracking-wider mb-1.5 font-sans flex items-center justify-between">
+                  <span>Source Location</span>
+                  <span className="text-[10px] text-warm-muted font-normal normal-case">Optional</span>
+                </label>
+                <div className="relative">
+                  <select
+                    value={cellarLocation}
+                    onChange={(e) => setCellarLocation(e.target.value)}
+                    className="w-full bg-white border border-warm-border rounded-lg px-3 py-2 text-sm font-sans text-charcoal focus:outline-none focus:border-gold focus:ring-1 focus:ring-gold appearance-none"
+                  >
+                    <option value="">Any location (auto-select)</option>
+                    {selectedWine.wine_stock
+                      .filter(s => s.quantity > 0 && s.cellar_location)
+                      .map(s => (
+                        <option key={s.id} value={s.cellar_location!}>
+                          {s.cellar_location} ({s.quantity} {s.quantity === 1 ? 'btl' : 'btls'} available)
+                        </option>
+                      ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-warm-muted">
+                    <MapPin className="h-4 w-4" />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Date */}
             <div>

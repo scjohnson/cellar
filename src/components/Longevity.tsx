@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { getWines } from '../lib/queries'
+import { getWines, getTotalQuantity } from '../lib/queries'
 import type { Wine } from '../lib/queries'
 import { Calendar } from 'lucide-react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
@@ -39,7 +39,7 @@ export default function Longevity() {
   })
 
   const { timelineData, winesForSelectedYear } = useMemo(() => {
-    const inCellar = wines.filter(w => w.quantity > 0)
+    const inCellar = wines.filter(w => getTotalQuantity(w) > 0)
     
     // Longevity Timeline (10 years)
     const currentYear = new Date().getFullYear()
@@ -54,7 +54,7 @@ export default function Longevity() {
         if (from || until) {
           const isReady = (!from || year >= from) && (!until || year <= until)
           if (isReady) {
-            bottles += w.quantity
+            bottles += getTotalQuantity(w)
             cuvees += 1
           }
         }
@@ -158,6 +158,8 @@ export default function Longevity() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-2 no-scrollbar">
               {winesForSelectedYear.map(wine => {
                 const endsSoon = wine.drink_until === Number(selectedYear) || wine.drink_until === Number(selectedYear) + 1
+                const qty = getTotalQuantity(wine)
+                const locs = wine.wine_stock?.filter(s => s.quantity > 0 && s.cellar_location).map(s => s.cellar_location).join(', ')
                 return (
                   <Link
                     key={wine.id}
@@ -170,7 +172,7 @@ export default function Longevity() {
                       </p>
                       <p className="text-warm-muted text-[10px] mt-1 truncate font-sans">
                         {wine.vintage || 'NV'} · {wine.name || 'Cuvée'}
-                        {wine.cellar_location && ` · Loc: ${wine.cellar_location}`}
+                        {locs && ` · Loc: ${locs}`}
                       </p>
                     </div>
 
@@ -183,7 +185,7 @@ export default function Longevity() {
 
                       <div className="text-right">
                         <span className="font-serif text-xs font-bold text-charcoal block">
-                          {wine.quantity} {wine.quantity === 1 ? 'bottle' : 'bottles'}
+                          {qty} {qty === 1 ? 'bottle' : 'bottles'}
                         </span>
                         <span className="text-[9px] text-warm-muted font-mono block mt-0.5 font-sans">
                           Window: {wine.drink_from || 'NV'}–{wine.drink_until || 'Present'}

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { getWines } from '../lib/queries'
+import { getWines, getTotalQuantity } from '../lib/queries'
 import type { Wine } from '../lib/queries'
 import { Search, Filter, Wine as WineIcon, MapPin, Calendar, Info, BarChart3, X } from 'lucide-react'
 import { Treemap, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts'
@@ -55,7 +55,7 @@ export default function CellarGrid() {
 
     // 1. In Stock Filter
     if (inStockOnly) {
-      result = result.filter(w => w.quantity > 0)
+      result = result.filter(w => getTotalQuantity(w) > 0)
     }
 
     // 2. Search Filter
@@ -101,7 +101,7 @@ export default function CellarGrid() {
         const bV = b.vintage || 0
         comparison = aV - bV
       } else if (sortField === 'quantity') {
-        comparison = a.quantity - b.quantity
+        comparison = getTotalQuantity(a) - getTotalQuantity(b)
       } else if (sortField === 'region') {
         const aR = a.region || ''
         const bR = b.region || ''
@@ -168,19 +168,23 @@ export default function CellarGrid() {
 
   // Location data for Treemap
   const locationData = useMemo(() => {
-    const inCellar = wines.filter(w => w.quantity > 0 && w.cellar_location)
+    const inCellar = wines.filter(w => getTotalQuantity(w) > 0 && w.wine_stock?.some(s => s.cellar_location))
     if (inCellar.length === 0) return []
     
     const locationMap: Record<string, Record<string, number>> = {}
     
     inCellar.forEach(w => {
-      const fullLoc = w.cellar_location || 'Unassigned'
-      // Group by the main location prefix (e.g. "Wine Fridge, Row 6" -> "Wine Fridge")
-      const loc = fullLoc.split(',')[0].trim()
-      const style = w.style || 'Other'
-      if (!locationMap[loc]) locationMap[loc] = {}
-      if (!locationMap[loc][style]) locationMap[loc][style] = 0
-      locationMap[loc][style] += w.quantity
+      w.wine_stock?.forEach(s => {
+        if (s.quantity > 0) {
+          const fullLoc = s.cellar_location || 'Unassigned'
+          // Group by the main location prefix (e.g. "Wine Fridge, Row 6" -> "Wine Fridge")
+          const loc = fullLoc.split(',')[0].trim()
+          const style = w.style || 'Other'
+          if (!locationMap[loc]) locationMap[loc] = {}
+          if (!locationMap[loc][style]) locationMap[loc][style] = 0
+          locationMap[loc][style] += s.quantity
+        }
+      })
     })
 
     const getStyleColor = (style: string) => {
@@ -461,6 +465,8 @@ export default function CellarGrid() {
           <div className="grid grid-cols-1 gap-4">
             {filteredAndSortedWines.map((wine) => {
               const drinkStatus = getDrinkWindowStatus(wine)
+              const qty = getTotalQuantity(wine)
+              const locs = wine.wine_stock?.filter(s => s.quantity > 0 && s.cellar_location).map(s => s.cellar_location).join(', ')
               return (
                 <Link
                   key={wine.id}
@@ -468,7 +474,7 @@ export default function CellarGrid() {
                   className="group relative bg-white hover:bg-white/95 border border-warm-border hover:border-gold hover:shadow-md transition-all rounded-xl p-5 flex flex-col justify-between cursor-pointer active:scale-[0.99] duration-150"
                 >
                   {/* Out of stock badge */}
-                  {wine.quantity === 0 && (
+                  {qty === 0 && (
                     <div className="absolute top-0 right-0 bg-stone-100 border-b border-l border-warm-border text-[9px] uppercase font-bold text-warm-muted px-2.5 py-1 rounded-bl-lg rounded-tr-xl">
                       Empty
                     </div>
@@ -518,12 +524,12 @@ export default function CellarGrid() {
 
                     {/* Qty & Location indicator */}
                     <div className="flex flex-col items-end shrink-0">
-                      <span className={`text-sm font-bold font-serif ${wine.quantity > 0 ? 'text-charcoal' : 'text-warm-muted'}`}>
-                        {wine.quantity} {wine.quantity === 1 ? 'bottle' : 'bottles'}
+                      <span className={`text-sm font-bold font-serif ${qty > 0 ? 'text-charcoal' : 'text-warm-muted'}`}>
+                        {qty} {qty === 1 ? 'bottle' : 'bottles'}
                       </span>
-                      {wine.cellar_location && (
+                      {locs && (
                         <span className="text-[9px] text-warm-muted font-mono mt-0.5">
-                          Loc: {wine.cellar_location}
+                          Loc: {locs}
                         </span>
                       )}
                     </div>
